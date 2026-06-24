@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Race to the Moon · Hackathon 2026</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="stage">
+    <canvas id="stars" aria-hidden="true"></canvas>
+
+    <header class="hud">
+      <div class="hud-title">
+        <span class="mark" aria-hidden="true">
+          <span class="mark-ship"></span>
+          <span class="mark-flame"></span>
+        </span>
+        <div class="hud-title-text">
+          <h1>Race to the Moon</h1>
+          <p class="hud-sub" id="event-sub">Hackathon 2026</p>
+        </div>
+      </div>
+
+      <div class="hud-meta">
+        <div class="meta-block">
+          <span class="meta-label" id="clock-label">Mission time</span>
+          <span class="meta-value clock" id="clock">--:--:--</span>
+        </div>
+        <div class="meta-block meta-right">
+          <span class="meta-label">Telemetry</span>
+          <span class="meta-value live"><span class="live-dot" id="live-dot"></span><span id="sync">syncing…</span></span>
+        </div>
+        <div class="demo-flag" id="demo-flag" hidden>Demo data</div>
+      </div>
+    </header>
+
+    <main class="mission">
+      <div class="gauge-field" id="gauge-field">
+        <div class="moon" aria-hidden="true">
+          <span class="moon-target">The Moon</span>
+        </div>
+        <div class="gridlines" id="gridlines" aria-hidden="true"></div>
+        <div class="lanes" id="lanes"></div>
+      </div>
+      <div class="consoles" id="consoles"></div>
+    </main>
+
+    <div class="offline-banner" id="offline" hidden>Telemetry offline — retrying…</div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "race-to-the-moon",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Live hackathon leaderboard — a space race to the moon, powered by GitHub commit stats.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

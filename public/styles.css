@@ -1,0 +1,577 @@
+/* ============================================================================
+   Race to the Moon — mission-control telemetry board
+   Palette:  ground #0A0C18 · text #E9ECF7 · gold #F6C453
+             coral #FF7A5C · teal #4FD8C4 · violet #A98BFF
+   Type:     Space Grotesk (display) · JetBrains Mono (telemetry)
+   ========================================================================== */
+
+:root {
+  --ground: #0A0C18;
+  --ground-2: #11142a;
+  --text: #E9ECF7;
+  --muted: #8b95bd;
+  --faint: #5a6390;
+  --gold: #F6C453;
+  --gold-soft: #ffe6a8;
+  --grid: #1f2542;
+  --panel: rgba(22, 27, 52, 0.55);
+  --panel-line: rgba(120, 134, 200, 0.18);
+
+  --display: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* altitude track geometry (shared by gridlines + rockets).
+     --ceil is where the LEADER's rocket base sits; the ship body (~110px)
+     extends above it, so it stays below --ceil + ship < the moon. */
+  --pad: 4%;    /* launchpad / zero line, near the floor */
+  --ceil: 65%;  /* max line — leaves headroom for the ship body + the moon */
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--display);
+  overflow: hidden;
+}
+
+.stage {
+  position: relative;
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(12px, 2vh, 26px) clamp(16px, 2.4vw, 40px);
+  gap: clamp(8px, 1.4vh, 18px);
+  /* deep-space ground: subtle violet glow up top where the moon hangs */
+  background:
+    radial-gradient(120% 70% at 50% -8%, rgba(246, 196, 83, 0.10) 0%, rgba(246, 196, 83, 0) 42%),
+    radial-gradient(100% 80% at 50% 120%, rgba(79, 216, 196, 0.05) 0%, rgba(10, 12, 24, 0) 55%),
+    linear-gradient(180deg, #0c1024 0%, var(--ground) 48%, #07080f 100%);
+}
+
+#stars {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.stage > *:not(#stars) { position: relative; z-index: 1; }
+
+/* ---- HUD header ---------------------------------------------------------- */
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.hud-title { display: flex; align-items: center; gap: clamp(10px, 1vw, 18px); }
+
+.hud-title h1 {
+  margin: 0;
+  font-size: clamp(1.4rem, 2.5vw, 2.5rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  background: linear-gradient(180deg, #ffffff 0%, var(--gold-soft) 130%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hud-sub {
+  margin: 0.35em 0 0;
+  font-family: var(--mono);
+  font-size: clamp(0.6rem, 0.85vw, 0.82rem);
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* little launch mark next to the title */
+.mark {
+  position: relative;
+  width: clamp(26px, 2.4vw, 40px);
+  height: clamp(26px, 2.4vw, 40px);
+  flex: none;
+}
+.mark-ship {
+  position: absolute;
+  left: 50%; top: 6%;
+  width: 38%; height: 64%;
+  transform: translateX(-50%);
+  border-radius: 50% 50% 40% 40% / 55% 55% 18% 18%;
+  background: linear-gradient(90deg, #fff 0%, var(--gold) 55%, #a9792a 100%);
+}
+.mark-flame {
+  position: absolute;
+  left: 50%; bottom: 6%;
+  width: 22%; height: 26%;
+  transform: translateX(-50%);
+  border-radius: 50% 50% 50% 50% / 20% 20% 80% 80%;
+  background: linear-gradient(180deg, #fff6d8, var(--gold) 45%, #ff7a5c 100%);
+  filter: blur(0.4px);
+  animation: flick 0.4s infinite alternate ease-in-out;
+}
+
+.hud-meta {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 1.8vw, 34px);
+}
+.meta-block { display: flex; flex-direction: column; gap: 4px; }
+.meta-right { align-items: flex-end; }
+.meta-label {
+  font-family: var(--mono);
+  font-size: clamp(0.52rem, 0.7vw, 0.7rem);
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.meta-value {
+  font-family: var(--mono);
+  font-size: clamp(0.95rem, 1.5vw, 1.5rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+.clock { color: var(--gold-soft); }
+.live { display: inline-flex; align-items: center; gap: 0.5em; color: var(--text); }
+.live-dot {
+  width: 0.7em; height: 0.7em;
+  border-radius: 50%;
+  background: #45e08a;
+  box-shadow: 0 0 0 0 rgba(69, 224, 138, 0.6);
+  animation: pulse 1.8s infinite;
+}
+.live-dot.stale { background: var(--gold); animation: none; box-shadow: none; }
+.live-dot.offline { background: #ff5d5d; animation: none; box-shadow: none; }
+
+.demo-flag {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--gold);
+  border: 1px solid rgba(246, 196, 83, 0.4);
+  border-radius: 999px;
+  padding: 0.4em 0.9em;
+  background: rgba(246, 196, 83, 0.08);
+}
+
+/* ---- mission area -------------------------------------------------------- */
+.mission {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 1.6vh, 20px);
+  min-height: 0;
+}
+
+/* the sky where rockets climb */
+.gauge-field {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--panel-line);
+  border-radius: 18px;
+  background:
+    radial-gradient(80% 60% at 50% 0%, rgba(246, 196, 83, 0.06), rgba(10, 12, 24, 0) 60%),
+    rgba(8, 10, 22, 0.35);
+  overflow: hidden;
+}
+
+/* the moon — shared target hanging at the top centre */
+.moon {
+  position: absolute;
+  top: -3.5%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: clamp(74px, 10vmin, 150px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 36% 32%, #fff8e6 0%, #f3e3b4 32%, #d8c084 62%, #b49a62 100%);
+  box-shadow:
+    0 0 7vmin 1.4vmin rgba(246, 196, 83, 0.20),
+    inset -1.1vmin -1.1vmin 2.4vmin rgba(90, 66, 22, 0.55);
+}
+.moon::before,
+.moon::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(120, 92, 40, 0.28);
+}
+.moon::before { width: 22%; height: 22%; top: 30%; left: 24%; box-shadow: 0 0 0 0.4vmin rgba(120,92,40,0.10); }
+.moon::after  { width: 14%; height: 14%; top: 58%; left: 56%; }
+.moon-target {
+  position: absolute;
+  top: 112%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: clamp(0.5rem, 0.7vw, 0.72rem);
+  letter-spacing: 0.36em;
+  text-transform: uppercase;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+/* horizontal altitude gridlines (filled in by JS) */
+.gridlines { position: absolute; inset: 0; }
+.gridline {
+  position: absolute;
+  left: 0; right: 0;
+  border-top: 1px dashed rgba(120, 134, 200, 0.16);
+}
+.gridline span {
+  position: absolute;
+  left: 10px;
+  top: -0.95em;
+  font-family: var(--mono);
+  font-size: clamp(0.5rem, 0.66vw, 0.7rem);
+  letter-spacing: 0.1em;
+  color: var(--faint);
+  background: linear-gradient(90deg, rgba(8,10,22,0.9), rgba(8,10,22,0));
+  padding-right: 0.8em;
+}
+.gridline.is-top { border-top-color: rgba(246, 196, 83, 0.3); }
+.gridline.is-top span { color: var(--gold); }
+
+/* the three lanes */
+.lanes {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: clamp(8px, 1.5vw, 26px);
+  padding: 0 clamp(8px, 1.5vw, 26px);
+}
+.lane {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.lane::after { /* faint full-height launch column behind each rocket */
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: var(--pad);
+  width: 1px;
+  height: calc(var(--ceil) - var(--pad));
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(120,134,200,0) 0%, rgba(120,134,200,0.10) 100%);
+}
+
+/* the climb trail — its length is the altitude reached so far */
+.lane .trail {
+  position: absolute;
+  left: 50%;
+  bottom: var(--pad);
+  width: clamp(3px, 0.4vmin, 6px);
+  transform: translateX(-50%);
+  height: calc((var(--ceil) - var(--pad)) * var(--alt, 0));
+  border-radius: 6px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--team, #8AB4FF) 85%, transparent) 0%,
+    color-mix(in srgb, var(--team, #8AB4FF) 35%, transparent) 55%,
+    transparent 100%);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--team, #8AB4FF) 45%, transparent);
+  opacity: 0.7;
+  transition: height 1.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* launchpad bar at the zero line */
+.lane .pad {
+  position: absolute;
+  left: 50%;
+  bottom: var(--pad);
+  width: clamp(60px, 9vw, 150px);
+  height: 4px;
+  transform: translateX(-50%);
+  border-radius: 3px;
+  background: linear-gradient(90deg, transparent, rgba(139,149,189,0.5), transparent);
+}
+
+/* the rocket itself, positioned by --alt (0..1) */
+.rocket {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--pad) + (var(--ceil) - var(--pad)) * var(--alt, 0));
+  transform: translate(-50%, 0);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--team, #8AB4FF);
+  transition: bottom 1.3s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: bottom;
+  animation: bob 4s ease-in-out infinite;
+}
+
+.ship {
+  position: relative;
+  width: clamp(38px, 4.6vmin, 70px);
+  height: clamp(76px, 9.3vmin, 140px);
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
+}
+.ship .body {
+  position: absolute;
+  inset: 20% 27% 15% 27%;
+  border-radius: 38% 38% 42% 42% / 14% 14% 22% 22%;
+  background:
+    linear-gradient(100deg,
+      color-mix(in srgb, currentColor 32%, #ffffff) 0%,
+      currentColor 46%,
+      color-mix(in srgb, currentColor 58%, #000000) 100%);
+}
+.ship .nose {
+  position: absolute;
+  left: 50%; top: 0;
+  width: 0; height: 0;
+  transform: translateX(-50%);
+  border-left: clamp(9px, 1.15vmin, 17px) solid transparent;
+  border-right: clamp(9px, 1.15vmin, 17px) solid transparent;
+  border-bottom: clamp(17px, 2.3vmin, 34px) solid color-mix(in srgb, currentColor 28%, #ffffff);
+}
+.ship .window {
+  position: absolute;
+  left: 50%; top: 27%;
+  width: 30%; aspect-ratio: 1;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #eafcff, #6fd6ea 55%, #1d4a63 100%);
+  box-shadow: inset 0 0 2px rgba(0,0,0,0.5), 0 0 7px rgba(111, 214, 234, 0.6);
+}
+.ship .fin {
+  position: absolute;
+  bottom: 9%;
+  width: 0; height: 0;
+  border-top: clamp(18px, 2.3vmin, 34px) solid color-mix(in srgb, currentColor 62%, #000000);
+}
+.ship .fin.left  { left: 3%;  border-left:  clamp(12px, 1.5vmin, 22px) solid transparent; }
+.ship .fin.right { right: 3%; border-right: clamp(12px, 1.5vmin, 22px) solid transparent; }
+
+/* exhaust flame */
+.rocket .flame {
+  width: clamp(11px, 1.4vmin, 20px);
+  height: clamp(18px, 2.4vmin, 38px);
+  margin-top: -6%;
+  border-radius: 50% 50% 50% 50% / 26% 26% 80% 80%;
+  background: linear-gradient(180deg, #fff6d8 0%, var(--gold) 38%, #ff7a5c 100%);
+  filter: blur(0.5px) drop-shadow(0 0 8px rgba(246, 196, 83, 0.6));
+  transform-origin: top center;
+  animation: flameFlicker 0.18s infinite alternate ease-in-out;
+}
+
+/* leader treatment in the sky */
+.rocket.leader { color: var(--team); }
+.rocket.leader::before {
+  content: "";
+  position: absolute;
+  left: 50%; top: 46%;
+  width: 220%; aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(246, 196, 83, 0.30) 0%, rgba(246, 196, 83, 0) 68%);
+  z-index: -1;
+  animation: halo 3s ease-in-out infinite;
+}
+
+/* ---- consoles (the ranked readout cards) -------------------------------- */
+.consoles {
+  display: flex;
+  gap: clamp(8px, 1.5vw, 26px);
+  flex: none;
+}
+.console {
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(4px, 0.8vh, 10px);
+  padding: clamp(12px, 1.6vh, 22px) clamp(12px, 1.4vw, 24px) clamp(14px, 1.8vh, 22px);
+  border-radius: 16px;
+  border: 1px solid var(--panel-line);
+  border-top: 3px solid var(--team, #8AB4FF);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--team, #8AB4FF) 10%, transparent) 0%, rgba(0,0,0,0) 40%),
+    var(--panel);
+  backdrop-filter: blur(6px);
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.5s ease, border-color 0.5s ease;
+}
+
+.console-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+}
+.rank {
+  font-family: var(--mono);
+  font-size: clamp(0.92rem, 1.3vw, 1.4rem);
+  font-weight: 800;
+  color: var(--faint);
+  line-height: 1;
+  min-width: 1.6em;
+}
+.cname {
+  font-size: clamp(1rem, 1.5vw, 1.7rem);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+.crown { width: clamp(20px, 1.7vw, 30px); height: auto; flex: none; }
+
+.loc { display: flex; flex-direction: column; gap: 0.1em; margin-top: 0.1em; }
+.loc-num {
+  font-family: var(--mono);
+  font-size: clamp(2rem, 4.4vw, 4.4rem);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+.loc-unit {
+  font-family: var(--mono);
+  font-size: clamp(0.56rem, 0.78vw, 0.8rem);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.substats {
+  display: flex;
+  gap: clamp(8px, 1vw, 18px);
+  margin-top: auto;
+  padding-top: clamp(8px, 1vh, 14px);
+  border-top: 1px solid var(--panel-line);
+}
+.substat { display: flex; flex-direction: column; gap: 0.15em; min-width: 0; }
+.substat .s-num {
+  font-family: var(--mono);
+  font-size: clamp(0.82rem, 1.15vw, 1.25rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  white-space: nowrap;
+}
+.substat .s-lab {
+  font-family: var(--mono);
+  font-size: clamp(0.5rem, 0.64vw, 0.66rem);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.substat .s-num.pad-state { color: var(--muted); font-size: clamp(0.66rem, 0.9vw, 0.95rem); }
+
+.lead-tag {
+  position: absolute;
+  top: -0.85em;
+  right: clamp(12px, 1.4vw, 24px);
+  font-family: var(--mono);
+  font-size: clamp(0.5rem, 0.66vw, 0.68rem);
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #1a1305;
+  background: linear-gradient(90deg, var(--gold-soft), var(--gold));
+  border-radius: 999px;
+  padding: 0.45em 1em;
+  box-shadow: 0 4px 14px rgba(246, 196, 83, 0.35);
+}
+
+/* leader card */
+.console.is-leader {
+  border-color: rgba(246, 196, 83, 0.55);
+  border-top-color: var(--gold);
+  transform: translateY(-12px);
+  box-shadow: 0 0 0 1px rgba(246, 196, 83, 0.25), 0 18px 50px rgba(246, 196, 83, 0.16);
+  background:
+    linear-gradient(180deg, rgba(246, 196, 83, 0.14) 0%, rgba(0,0,0,0) 45%),
+    var(--panel);
+}
+.console.is-leader .rank { color: var(--gold); }
+
+/* a brief flash when a team takes the lead */
+.console.lead-change { animation: leadflash 1.1s ease-out; }
+
+/* error / stale flag on a card */
+.tele-flag {
+  position: absolute;
+  top: clamp(10px, 1.2vh, 16px);
+  right: clamp(12px, 1.2vw, 20px);
+  font-family: var(--mono);
+  font-size: clamp(0.46rem, 0.6vw, 0.6rem);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.tele-flag.err { color: #ff7a7a; }
+
+/* ---- offline banner ------------------------------------------------------ */
+.offline-banner {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(14px, 2vh, 28px);
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #ffcaca;
+  background: rgba(120, 20, 20, 0.55);
+  border: 1px solid rgba(255, 120, 120, 0.4);
+  border-radius: 999px;
+  padding: 0.6em 1.4em;
+  z-index: 5;
+}
+
+/* ---- keyframes ----------------------------------------------------------- */
+/* header mark flame — absolutely positioned, so it keeps its centering offset */
+@keyframes flick {
+  from { transform: translateX(-50%) scaleY(0.82) scaleX(1.04); opacity: 0.9; }
+  to   { transform: translateX(-50%) scaleY(1.12) scaleX(0.92); opacity: 1; }
+}
+/* rocket exhaust — a flex-centered child, so scale only (no translateX, or it
+   drifts off-centre by half its width) */
+@keyframes flameFlicker {
+  from { transform: scaleY(0.82) scaleX(1.04); opacity: 0.9; }
+  to   { transform: scaleY(1.12) scaleX(0.92); opacity: 1; }
+}
+@keyframes bob {
+  0%, 100% { transform: translate(-50%, 0); }
+  50%      { transform: translate(-50%, -4px); }
+}
+@keyframes halo {
+  0%, 100% { opacity: 0.7; }
+  50%      { opacity: 1; }
+}
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(69, 224, 138, 0.6); }
+  70%  { box-shadow: 0 0 0 0.7em rgba(69, 224, 138, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(69, 224, 138, 0); }
+}
+@keyframes leadflash {
+  0%   { box-shadow: 0 0 0 1px rgba(246, 196, 83, 0.25), 0 0 0 0 rgba(246, 196, 83, 0.55); }
+  40%  { box-shadow: 0 0 0 1px rgba(246, 196, 83, 0.7), 0 0 60px 12px rgba(246, 196, 83, 0.45); }
+  100% { box-shadow: 0 0 0 1px rgba(246, 196, 83, 0.25), 0 18px 50px rgba(246, 196, 83, 0.16); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rocket, .rocket .flame, .mark-flame, .live-dot, .lane .trail,
+  .rocket.leader::before, .console, .console.lead-change {
+    animation: none !important;
+    transition: none !important;
+  }
+}

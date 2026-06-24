@@ -1,0 +1,11 @@
+{
+  "event": "Hackathon 2026",
+  "org": "Westpress",
+  "owner": "Westpress",
+  "hackathonStart": null,
+  "teams": [
+    { "id": "team1", "name": "Team 1", "repo": "hackathon-2026-team-1", "color": "#FF7A5C" },
+    { "id": "team2", "name": "Team 2", "repo": "hackathon-2026-team-2", "color": "#4FD8C4" },
+    { "id": "team3", "name": "Team 3", "repo": "hackathon-2026-team-3", "color": "#A98BFF" }
+  ]
+}
