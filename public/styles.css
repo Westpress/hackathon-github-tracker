@@ -647,7 +647,7 @@ html, body {
   display: flex;
   flex-direction: column;
   width: min(1100px, 92vw);
-  max-height: 88vh;
+  height: 88vh;            /* definite height so the image area can be bounded */
   border-radius: 20px;
   border: 1px solid var(--panel-line);
   border-top: 3px solid var(--team, #8AB4FF);
@@ -699,14 +699,15 @@ html, body {
   align-items: center;
   gap: clamp(8px, 1vw, 16px);
   padding: clamp(12px, 2vh, 22px) clamp(12px, 1.5vw, 22px) 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;          /* take the leftover space, independent of image size */
   min-height: 0;
 }
 .shot-stage-frame {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
-  height: 100%;
+  min-height: 0;
+  align-self: stretch;  /* fill the (now definite) stage height */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -715,7 +716,15 @@ html, body {
   border-radius: 12px;
   overflow: hidden;
 }
-.shot-stage-img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; transition: opacity 0.2s ease; }
+.shot-stage-img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  transition: opacity 0.2s ease;
+}
 .shot-stage-img.loading { opacity: 0.25; }
 .shot-stage-cap {
   position: absolute;
@@ -797,6 +806,91 @@ html, body {
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
 @keyframes popin { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }
 
+/* ---- easter egg: Cansu's rocket, debugging from afar through the night --- */
+.cansu {
+  position: absolute;
+  left: -14%;
+  top: 82%;
+  width: 0;
+  height: 0;
+  --cansu-color: #FF8FD0;         /* rose — a distinct cameo; overridable via config */
+  color: var(--cansu-color);
+  pointer-events: none;
+  animation: cansuFlight 60s linear infinite;
+  animation-delay: -5s;           /* visible shortly after load, then every ~60s */
+}
+.cansu-craft {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -50%) rotate(76deg);  /* nose along the flight path */
+}
+.cansu-ship {
+  width: clamp(20px, 2.1vmin, 30px);
+  height: auto;
+  display: block;
+  overflow: visible;
+  filter: drop-shadow(0 0 7px color-mix(in srgb, currentColor 75%, transparent));
+}
+.cansu-body { fill: currentColor; }
+.cansu-fin { fill: color-mix(in srgb, currentColor 55%, #3a1030); }
+.cansu-window { fill: #e8fbff; }
+.cansu-flame {
+  fill: #ffe0b0;
+  transform-box: fill-box;
+  transform-origin: center top;
+  animation: cansuFlame 0.2s infinite alternate ease-in-out;
+}
+.cansu-trail {
+  width: clamp(3px, 0.4vmin, 5px);
+  height: clamp(60px, 13vmin, 160px);
+  margin-top: -2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, color-mix(in srgb, currentColor 85%, transparent), transparent 92%);
+  filter: blur(1px);
+  opacity: 0.7;
+}
+.cansu-label {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  white-space: nowrap;
+  text-align: center;
+}
+.cansu-name {
+  font-family: var(--display);
+  font-size: clamp(0.72rem, 1vw, 0.98rem);
+  font-weight: 600;
+  color: #ffffff;
+  text-shadow: 0 0 9px color-mix(in srgb, var(--cansu-color) 85%, transparent);
+}
+.cansu-note {
+  font-family: var(--mono);
+  font-size: clamp(0.5rem, 0.66vw, 0.66rem);
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--cansu-color) 65%, #ffffff);
+}
+
+@keyframes cansuFlight {
+  0%   { left: -14%; top: 82%; opacity: 0; }
+  3%   { opacity: 1; }
+  22%  { left: 114%; top: 9%; opacity: 1; }
+  26%  { left: 114%; top: 9%; opacity: 0; }
+  100% { left: 114%; top: 9%; opacity: 0; }
+}
+@keyframes cansuFlame {
+  from { transform: scaleY(0.8); opacity: 0.85; }
+  to   { transform: scaleY(1.15); opacity: 1; }
+}
+
 /* ---- offline banner ------------------------------------------------------ */
 .offline-banner {
   position: absolute;
@@ -849,8 +943,11 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .rocket, .rocket .flame, .mark-flame, .live-dot, .lane .trail,
   .rocket.leader::before, .console, .console.lead-change,
-  .shot-modal-backdrop, .shot-modal-panel, .shot-frame, .strip-thumb img {
+  .shot-modal-backdrop, .shot-modal-panel, .shot-frame, .strip-thumb img,
+  .cansu, .cansu-flame {
     animation: none !important;
     transition: none !important;
   }
+  /* park Cansu quietly in a corner of the sky instead of flying */
+  .cansu { left: auto; right: 7%; top: 13%; opacity: 0.55; }
 }

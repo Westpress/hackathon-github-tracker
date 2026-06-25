@@ -44,6 +44,25 @@
           <span class="moon-target">The Moon</span>
         </div>
         <div class="gridlines" id="gridlines" aria-hidden="true"></div>
+
+        <!-- easter egg (toggle/customise via config.json "easterEgg") -->
+        <div class="cansu" aria-hidden="true" hidden>
+          <div class="cansu-craft">
+            <svg class="cansu-ship" viewBox="0 0 36 78" xmlns="http://www.w3.org/2000/svg">
+              <path class="cansu-body" d="M18 2 C27 13 27 35 23 53 L13 53 C9 35 9 13 18 2 Z" />
+              <path class="cansu-fin" d="M13 43 L4 56 L13 51 Z" />
+              <path class="cansu-fin" d="M23 43 L32 56 L23 51 Z" />
+              <circle class="cansu-window" cx="18" cy="23" r="4.6" />
+              <path class="cansu-flame" d="M13 54 Q18 76 23 54 Q18 62 13 54 Z" />
+            </svg>
+            <span class="cansu-trail"></span>
+          </div>
+          <div class="cansu-label">
+            <span class="cansu-name">Cansu</span>
+            <span class="cansu-note">up late squashing bugs</span>
+          </div>
+        </div>
+
         <div class="lanes" id="lanes"></div>
       </div>
       <div class="consoles" id="consoles"></div>

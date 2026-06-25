@@ -280,12 +280,18 @@ async function buildSnapshot() {
     teams.push({ ...identity, ...m, screenshots: shots });
   }
 
+  const egg = config.easterEgg;
+  const easterEgg = egg && egg.enabled !== false
+    ? { name: egg.name || 'Cansu', note: egg.note || '', color: egg.color || '#FF8FD0' }
+    : null;
+
   return {
     updatedAt: new Date().toISOString(),
     hackathonStart: config.hackathonStart || null,
     event: config.event || 'Hackathon',
     org: config.org || '',
     demo: DEMO,
+    easterEgg,
     teams,
   };
 }

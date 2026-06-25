@@ -16,6 +16,7 @@ const els = {
   demoFlag: document.getElementById('demo-flag'),
   offline: document.getElementById('offline'),
   eventSub: document.getElementById('event-sub'),
+  cansu: document.querySelector('.cansu'),
 };
 
 const lanesById = new Map();    // id -> { rocket, alt element refs }
@@ -164,6 +165,17 @@ function renderGridlines(maxLines) {
   }).join('');
 }
 
+/* ---- easter egg (toggle/customise via config.json) ----------------------- */
+function updateEasterEgg(egg) {
+  const el = els.cansu;
+  if (!el) return;
+  if (!egg) { el.hidden = true; return; }   // disabled in config
+  el.hidden = false;
+  if (egg.color) el.style.setProperty('--cansu-color', egg.color);
+  if (egg.name) el.querySelector('.cansu-name').textContent = egg.name;
+  if (egg.note != null) el.querySelector('.cansu-note').textContent = egg.note;
+}
+
 /* ---- main render --------------------------------------------------------- */
 function render(snap) {
   if (!snap || !Array.isArray(snap.teams)) return;
@@ -173,6 +185,7 @@ function render(snap) {
     els.eventSub.textContent = snap.org ? `${snap.event} · ${snap.org}` : snap.event;
   }
   els.demoFlag.hidden = !snap.demo;
+  updateEasterEgg(snap.easterEgg);
 
   // first paint: build the DOM in config order
   if (lanesById.size === 0) snap.teams.forEach(buildTeam);

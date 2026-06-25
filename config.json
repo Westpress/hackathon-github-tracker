@@ -4,6 +4,12 @@
   "owner": "Westpress",
   "hackathonStart": null,
   "screenshotsFolder": "screenshots",
+  "easterEgg": {
+    "enabled": true,
+    "name": "Cansu",
+    "note": "up late squashing bugs",
+    "color": "#FF8FD0"
+  },
   "teams": [
     { "id": "team1", "name": "Kreative Raketen", "repo": "hackathon-2026-team-1", "color": "#FF7A5C" },
     { "id": "team2", "name": "Team RED", "repo": "hackathon-2026-team-2", "color": "#4FD8C4" },
