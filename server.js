@@ -28,8 +28,7 @@ const lastGood = new Map();   // teamId -> last successful metrics (carried forw
 const lastShots = new Map();  // teamId -> last successful screenshot list
 const shotCache = new Map();  // "teamId/name" -> { buffer, contentType } (images are immutable per name)
 const SHOT_CACHE_MAX = 80;
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const commitStatsCache = new Map(); // teamId -> Map(sha -> { a, d }) — per-commit line counts
 
 // --- GitHub plumbing --------------------------------------------------------
 async function ghFetch(url, { timeout = 12000 } = {}) {
@@ -54,14 +53,14 @@ async function ghFetch(url, { timeout = 12000 } = {}) {
   }
 }
 
-// The /stats/* endpoints return 202 while GitHub crunches the numbers; retry.
-async function ghStats(url) {
-  for (let i = 0; i < 5; i++) {
-    const r = await ghFetch(url);
-    if (r.status === 202) { await sleep(1500); continue; }
-    return r;
-  }
-  return { status: 202, json: null };
+// Run an async fn over items with bounded concurrency (keeps per-commit
+// fetches fast without hammering the API).
+async function mapLimit(items, limit, fn) {
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) { const idx = i++; await fn(items[idx]); }
+  });
+  await Promise.all(workers);
 }
 
 // Fetch raw bytes of a file (used to proxy private screenshots to the browser).
@@ -124,46 +123,65 @@ async function fetchScreenshots(team) {
   return { ok: true, shots };
 }
 
+const COMMIT_PAGES = 6;        // walk up to 600 commits on the default branch
+const STATS_CONCURRENCY = 8;   // parallel per-commit detail fetches
+
+// Metrics are derived straight from commit history rather than GitHub's
+// /stats/* endpoints. Those are computed asynchronously and, for fresh and
+// actively-pushed repos, get stuck returning 202/204 for a long time — so the
+// numbers never showed up. Commit history is always live.
 async function fetchTeam(team) {
   const owner = team.owner || config.owner;
   const base = `https://api.github.com/repos/${owner}/${team.repo}`;
   const out = { lines: 0, linesDeleted: 0, commits: 0, crew: 0, lastPush: null, computing: false, error: false, errMsg: '' };
 
-  // Lines added/removed, commit count and contributor ("crew") count all come
-  // from the contributor stats endpoint in a single call.
-  const c = await ghStats(`${base}/stats/contributors`);
-  if (c.status === 202) {
-    out.computing = true;            // GitHub is still crunching the stats
-  } else if (c.status === 204 || (c.status === 200 && !Array.isArray(c.json))) {
-    // 204 No Content = a brand-new, empty repo (no commits yet). Not an error —
-    // the team simply hasn't launched. Leave the zeros so the rocket waits on
-    // the pad instead of tripping the "telemetry offline" banner.
-  } else if (c.status === 200 && Array.isArray(c.json)) {
-    out.crew = c.json.length;
-    for (const con of c.json) {
-      out.commits += con.total || 0;
-      for (const w of con.weeks || []) {
-        out.lines += w.a || 0;
-        out.linesDeleted += w.d || 0;
-      }
-    }
-  } else if (c.status === 404) {
-    out.error = true; out.errMsg = 'repo not found / no access';
-  } else if (c.status === 401) {
-    out.error = true; out.errMsg = 'bad or expired token';
-  } else if (c.status === 403 || c.status === 429) {
-    out.error = true; out.errMsg = 'rate limited';
-  } else {
-    out.error = true; out.errMsg = `github http ${c.status}`;
+  // 1) Walk the default-branch commit history (paginated, capped).
+  const commits = [];
+  for (let page = 1; page <= COMMIT_PAGES; page++) {
+    const r = await ghFetch(`${base}/commits?per_page=100&page=${page}`);
+    if (r.status === 409) break;                       // empty repo — no commits yet
+    if (r.status === 200 && Array.isArray(r.json)) {
+      commits.push(...r.json);
+      if (r.json.length < 100) break;                  // reached the last page
+    } else if (r.status === 404) { out.error = true; out.errMsg = 'repo not found / no access'; return out; }
+    else if (r.status === 401) { out.error = true; out.errMsg = 'bad or expired token'; return out; }
+    else if (r.status === 403 || r.status === 429) { out.error = true; out.errMsg = 'rate limited'; return out; }
+    else { out.error = true; out.errMsg = `github http ${r.status}`; return out; }
   }
 
-  // Latest commit time = "last push". Always fresh (no stats lag).
-  try {
-    const lc = await ghFetch(`${base}/commits?per_page=1`);
-    if (lc.status === 200 && Array.isArray(lc.json) && lc.json[0]) {
-      out.lastPush = lc.json[0].commit?.author?.date || lc.json[0].commit?.committer?.date || null;
+  if (commits.length === 0) return out;                // nothing committed → on the pad
+
+  out.commits = commits.length;
+  out.lastPush = commits[0].commit?.author?.date || commits[0].commit?.committer?.date || null;
+
+  // crew = distinct commit authors (by GitHub login, else email, else name)
+  const crew = new Set();
+  for (const c of commits) {
+    const who = c.author?.login || c.commit?.author?.email || c.commit?.author?.name;
+    if (who) crew.add(String(who).toLowerCase());
+  }
+  out.crew = crew.size;
+
+  // 2) Lines added = sum of per-commit additions, skipping merge commits (which
+  //    would double-count). Each commit's stats are cached by SHA (commits are
+  //    immutable), so after the first pass only brand-new commits are fetched.
+  let cache = commitStatsCache.get(team.id);
+  if (!cache) { cache = new Map(); commitStatsCache.set(team.id, cache); }
+
+  const codeCommits = commits.filter((c) => (c.parents?.length || 0) < 2);
+  const missing = codeCommits.filter((c) => !cache.has(c.sha));
+  await mapLimit(missing, STATS_CONCURRENCY, async (c) => {
+    const d = await ghFetch(`${base}/commits/${c.sha}`);
+    if (d.status === 200 && d.json && d.json.stats) {
+      cache.set(c.sha, { a: d.json.stats.additions || 0, d: d.json.stats.deletions || 0 });
     }
-  } catch { /* leave lastPush null */ }
+    // on failure: leave it uncached so it's retried on the next refresh
+  });
+
+  for (const c of codeCommits) {
+    const st = cache.get(c.sha);
+    if (st) { out.lines += st.a; out.linesDeleted += st.d; }
+  }
 
   return out;
 }
@@ -289,9 +307,6 @@ async function refresh() {
 }
 
 // --- server -----------------------------------------------------------------
-await refresh();
-setInterval(refresh, REFRESH_MS);
-
 const app = express();
 app.get('/api/stats', (_req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -351,3 +366,8 @@ app.listen(PORT, () => {
     : 'LIVE GitHub data';
   console.log(`\n  🚀  Race to the Moon is up\n      → http://localhost:${PORT}\n      mode: ${mode}\n      refresh: every ${Math.round(REFRESH_MS / 1000)}s\n`);
 });
+
+// Begin pulling data right away, but don't block serving the page while the
+// first (possibly large) warm-up runs.
+refresh();
+setInterval(refresh, REFRESH_MS);
