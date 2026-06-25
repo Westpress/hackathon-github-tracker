@@ -94,6 +94,185 @@ token set.
 
 ---
 
+## Deploying on a Linux VM (from scratch)
+
+This runs the dashboard as a small always-on service on a Linux VM. The room's
+monitor then just opens the VM's URL in a browser. Commands below are for
+Ubuntu/Debian (`apt`); swap the package manager for other distros.
+
+### What you need
+
+| Dependency | Why | Version |
+|------------|-----|---------|
+| **Node.js** | runs the server (`server.js`) | **18 or newer** — 20 LTS recommended |
+| **npm** | installs the app's packages | ships with Node.js |
+| **git** | to clone the project onto the VM | any |
+| **A GitHub token** | read the private repos (see "Going live" above) | — |
+
+The app's own packages — `express` and `dotenv` — are pulled in by
+`npm install`; you don't install them by hand.
+
+### 1. Connect to the VM
+
+```bash
+ssh youruser@your-vm-ip
+```
+
+### 2. Install git and Node.js
+
+```bash
+# git
+sudo apt-get update && sudo apt-get install -y git
+
+# Node.js 20 LTS (via NodeSource — installs node + npm system-wide)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# confirm
+node --version   # should print v20.x (or v18+)
+npm --version
+```
+
+### 3. Get the code onto the VM
+
+Clone it from the repo:
+
+```bash
+cd ~
+git clone https://github.com/Westpress/hackathon-github-tracker.git race-to-the-moon
+cd race-to-the-moon
+```
+
+This repo is private, so git will ask you to authenticate. Easiest is to embed
+a token in the clone URL (a GitHub token with read access to this repo — the
+same one works):
+
+```bash
+git clone https://<TOKEN>@github.com/Westpress/hackathon-github-tracker.git race-to-the-moon
+```
+
+Or skip git entirely and copy it from your machine:
+
+```bash
+# run this on your local machine
+rsync -av --exclude node_modules --exclude .env ./github-tracker/ youruser@your-vm-ip:~/race-to-the-moon/
+```
+
+### 4. Install the app's packages
+
+```bash
+npm install
+```
+
+### 5. Configure your token
+
+```bash
+cp .env.example .env
+nano .env            # set GITHUB_TOKEN=...  (and PORT if you want something other than 4000)
+```
+
+`.env` is git-ignored, so your token never leaves the VM.
+
+### 6. Smoke test
+
+```bash
+npm start
+```
+
+You should see `mode: LIVE GitHub data`. From another machine on the same
+network, open `http://your-vm-ip:4000` to confirm it loads, then stop it with
+`Ctrl-C`.
+
+### 7. Run it as a service (auto-start, auto-restart)
+
+So it survives reboots and keeps running after you log out. Create the unit
+file (adjust `User` and the paths to match your user and clone location):
+
+```bash
+sudo tee /etc/systemd/system/race-to-the-moon.service > /dev/null <<'EOF'
+[Unit]
+Description=Race to the Moon dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=youruser
+WorkingDirectory=/home/youruser/race-to-the-moon
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+> `ExecStart` needs the absolute path to node — check yours with `which node`
+> (NodeSource installs it at `/usr/bin/node`). The service reads `.env` from
+> `WorkingDirectory`, so keep that pointed at the clone.
+
+Enable and start it:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now race-to-the-moon
+sudo systemctl status race-to-the-moon        # should say "active (running)"
+journalctl -u race-to-the-moon -f             # live logs (Ctrl-C to stop tailing)
+```
+
+### 8. Open the port in the firewall
+
+If `ufw` is enabled on the VM:
+
+```bash
+sudo ufw allow 4000/tcp
+```
+
+(Cloud VMs — AWS/Azure/GCP — also need port 4000 allowed in their security
+group / network firewall.)
+
+### 9. Point the room display at it
+
+On the machine driving the monitor, open Chrome in kiosk mode at the VM:
+
+```bash
+google-chrome --kiosk --app=http://your-vm-ip:4000
+```
+
+That's all it needs — the page refreshes itself.
+
+**Optional — serve it on plain port 80** (so the URL is just `http://your-vm-ip`)
+with nginx as a reverse proxy:
+
+```bash
+sudo apt-get install -y nginx
+sudo tee /etc/nginx/sites-available/race-to-the-moon > /dev/null <<'EOF'
+server {
+    listen 80;
+    server_name _;
+    location / {
+        proxy_pass http://127.0.0.1:4000;
+        proxy_set_header Host $host;
+    }
+}
+EOF
+sudo ln -sf /etc/nginx/sites-available/race-to-the-moon /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo ufw allow 80/tcp
+```
+
+### Updating later
+
+```bash
+cd ~/race-to-the-moon
+git pull                # or rsync again
+npm install             # only if dependencies changed
+sudo systemctl restart race-to-the-moon
+```
+
+---
+
 ## Putting it on the monitor
 
 - **Fullscreen:** open the URL and press **F11**, or launch Chrome in kiosk mode:
