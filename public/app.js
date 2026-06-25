@@ -100,31 +100,36 @@ function buildTeam(team) {
   lanesById.set(team.id, { lane, rocket: lane.querySelector('.rocket') });
 
   // console (the ranked readout card)
-  const card = document.createElement('a');
+  const card = document.createElement('div');
   card.className = 'console';
-  card.href = team.repoUrl || '#';
-  card.target = '_blank';
-  card.rel = 'noopener';
   card.style.setProperty('--team', team.color);
-  card.style.textDecoration = 'none';
-  card.style.color = 'inherit';
   card.innerHTML = `
     <div class="lead-tag" hidden>Leading the ascent</div>
     <div class="tele-flag" hidden></div>
-    <div class="console-head">
-      <span class="rank">—</span>
-      <span class="cname">${team.name}</span>
-      <span class="crown-slot"></span>
+    <div class="console-main">
+      <div class="console-head">
+        <span class="rank">—</span>
+        <a class="cname" href="${team.repoUrl || '#'}" target="_blank" rel="noopener">${team.name}</a>
+        <span class="crown-slot"></span>
+      </div>
+      <div class="loc">
+        <span class="loc-num">0</span>
+        <span class="loc-unit">Lines of code</span>
+      </div>
+      <div class="substats">
+        <div class="substat"><span class="s-num s-commits">0</span><span class="s-lab">Commits</span></div>
+        <div class="substat"><span class="s-num s-crew">0</span><span class="s-lab">Crew</span></div>
+        <div class="substat"><span class="s-num s-push">—</span><span class="s-lab">Last push</span></div>
+      </div>
     </div>
-    <div class="loc">
-      <span class="loc-num">0</span>
-      <span class="loc-unit">Lines of code</span>
-    </div>
-    <div class="substats">
-      <div class="substat"><span class="s-num s-commits">0</span><span class="s-lab">Commits</span></div>
-      <div class="substat"><span class="s-num s-crew">0</span><span class="s-lab">Crew</span></div>
-      <div class="substat"><span class="s-num s-push">—</span><span class="s-lab">Last push</span></div>
-    </div>`;
+    <button class="console-media" type="button" aria-label="View progress screenshots">
+      <span class="shot-frame">
+        <img class="shot-img" alt="" />
+        <span class="shot-empty">Awaiting<br>snapshot</span>
+        <span class="shot-overlay"><span class="shot-overlay-text">View history</span></span>
+      </span>
+      <span class="shot-cap"><span class="shot-cap-label">Latest progress</span><span class="shot-cap-time">—</span></span>
+    </button>`;
   els.consoles.appendChild(card);
   consolesById.set(team.id, {
     card,
@@ -136,8 +141,13 @@ function buildTeam(team) {
     push: card.querySelector('.s-push'),
     leadTag: card.querySelector('.lead-tag'),
     teleFlag: card.querySelector('.tele-flag'),
+    mediaBtn: card.querySelector('.console-media'),
+    mediaImg: card.querySelector('.shot-img'),
+    mediaCapLabel: card.querySelector('.shot-cap-label'),
+    mediaCapTime: card.querySelector('.shot-cap-time'),
     shownLines: 0,
     shownCommits: 0,
+    latestShotName: null,
   });
 }
 
@@ -229,6 +239,9 @@ function render(snap) {
     } else {
       c.teleFlag.hidden = true;
     }
+
+    // progress screenshots
+    updateMedia(c, team);
   });
 
   if (leaderChanged) {
@@ -241,6 +254,121 @@ function render(snap) {
   }
   currentLeaderId = leader ? leader.id : null;
 }
+
+/* ---- progress screenshots ------------------------------------------------ */
+function shotUrl(teamId, name) {
+  return `/api/shot/${encodeURIComponent(teamId)}/${encodeURIComponent(name)}`;
+}
+
+function shotTimeLabel(shot, opts = {}) {
+  if (shot && shot.time) {
+    const d = new Date(shot.time);
+    if (!Number.isNaN(d.getTime())) {
+      const hm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+      return opts.withDate
+        ? `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${hm}`
+        : hm;
+    }
+  }
+  return shot ? shot.name.replace(/\.[^.]+$/, '') : '—';
+}
+
+function updateMedia(c, team) {
+  const shots = team.screenshots || [];
+  c.mediaBtn.onclick = () => openShotModal(team);
+  if (shots.length) {
+    const latest = shots[0];
+    if (c.latestShotName !== latest.name) { // only reload when the newest changes
+      c.mediaImg.src = shotUrl(team.id, latest.name);
+      c.latestShotName = latest.name;
+    }
+    c.card.classList.add('has-shots');
+    c.mediaBtn.disabled = false;
+    c.mediaCapLabel.textContent = shots.length > 1 ? `Latest · ${shots.length} snapshots` : 'Latest snapshot';
+    c.mediaCapTime.textContent = shotTimeLabel(latest);
+  } else {
+    c.mediaImg.removeAttribute('src');
+    c.latestShotName = null;
+    c.card.classList.remove('has-shots');
+    c.mediaBtn.disabled = true;
+    c.mediaCapLabel.textContent = 'Progress';
+    c.mediaCapTime.textContent = 'no snapshots yet';
+  }
+}
+
+/* ---- screenshot history lightbox ----------------------------------------- */
+const modal = {
+  root: document.getElementById('shot-modal'),
+  team: document.getElementById('shot-modal-team'),
+  dot: document.getElementById('shot-modal-dot'),
+  sub: document.getElementById('shot-modal-sub'),
+  img: document.getElementById('shot-stage-img'),
+  cap: document.getElementById('shot-stage-cap'),
+  strip: document.getElementById('shot-strip'),
+  prev: document.getElementById('shot-prev'),
+  next: document.getElementById('shot-next'),
+  close: document.getElementById('shot-close'),
+};
+let modalShots = [];
+let modalIndex = 0;
+let modalTeamId = null;
+
+function openShotModal(team) {
+  const shots = team.screenshots || [];
+  if (!shots.length) return;
+  modalShots = shots;
+  modalTeamId = team.id;
+  modal.team.textContent = team.name;
+  modal.dot.style.background = team.color;
+  modal.root.style.setProperty('--team', team.color);
+  modal.sub.textContent = `Progress timeline · ${shots.length} snapshot${shots.length > 1 ? 's' : ''} · newest first`;
+
+  modal.strip.innerHTML = shots.map((s, i) =>
+    `<button class="strip-thumb" type="button" data-i="${i}">
+       <img loading="lazy" alt="" src="${shotUrl(team.id, s.name)}" />
+       <span class="strip-time">${shotTimeLabel(s)}</span>
+     </button>`).join('');
+  modal.strip.querySelectorAll('.strip-thumb').forEach((el) =>
+    el.addEventListener('click', () => selectShot(Number(el.dataset.i))));
+
+  modal.root.hidden = false;
+  document.body.classList.add('modal-open');
+  selectShot(0);
+  modal.close.focus();
+}
+
+function selectShot(i) {
+  if (i < 0 || i >= modalShots.length) return;
+  modalIndex = i;
+  const s = modalShots[i];
+  modal.img.classList.add('loading');
+  modal.img.onload = () => modal.img.classList.remove('loading');
+  modal.img.onerror = () => modal.img.classList.remove('loading');
+  modal.img.src = shotUrl(modalTeamId, s.name);
+  modal.cap.textContent = `${shotTimeLabel(s, { withDate: true })}   ·   ${i + 1} / ${modalShots.length}`;
+  modal.prev.disabled = i === 0;
+  modal.next.disabled = i === modalShots.length - 1;
+  const thumbs = modal.strip.querySelectorAll('.strip-thumb');
+  thumbs.forEach((t, ti) => t.classList.toggle('active', ti === i));
+  thumbs[i]?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
+}
+
+function closeShotModal() {
+  modal.root.hidden = true;
+  document.body.classList.remove('modal-open');
+  modal.img.removeAttribute('src');
+}
+
+modal.prev.addEventListener('click', () => selectShot(modalIndex - 1));
+modal.next.addEventListener('click', () => selectShot(modalIndex + 1));
+modal.close.addEventListener('click', closeShotModal);
+modal.root.addEventListener('click', (e) => { if (e.target.dataset.close) closeShotModal(); });
+document.addEventListener('keydown', (e) => {
+  if (modal.root.hidden) return;
+  if (e.key === 'Escape') closeShotModal();
+  else if (e.key === 'ArrowLeft') selectShot(modalIndex - 1);
+  else if (e.key === 'ArrowRight') selectShot(modalIndex + 1);
+});
 
 /* ---- polling ------------------------------------------------------------- */
 async function poll() {

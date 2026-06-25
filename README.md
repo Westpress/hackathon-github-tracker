@@ -128,6 +128,52 @@ A few things worth knowing:
 
 ---
 
+## Progress screenshots
+
+Each console card shows a small **porthole** preview of the team's latest
+progress screenshot. Click it to open a **history lightbox** — a timeline of all
+their snapshots with prev/next arrows, a filmstrip, and keyboard navigation
+(← / →, Esc to close).
+
+![Screenshot history](docs/screenshot-history.png)
+
+**How teams add screenshots:** commit image files into a `screenshots/` folder
+at the repo root, e.g.
+`github.com/Westpress/hackathon-2026-team-1/tree/main/screenshots`. A new file
+every ~30 minutes builds the timeline. `.png`, `.jpg`, `.gif` and `.webp` are
+all picked up.
+
+**Name them by time so the timeline reads nicely.** The dashboard pulls the
+timestamp straight out of the filename:
+
+```
+2026-06-25_14-30.png   →  shows "14:30"
+2026-06-25T1430.png    →  shows "14:30"
+progress-07.png        →  no time found, shows the filename instead
+```
+
+A tiny capture-and-commit loop a team can run on their machine:
+
+```bash
+while true; do
+  ts=$(date +%Y-%m-%d_%H-%M)
+  scrot "screenshots/$ts.png"          # or: screencapture (macOS), grim (Wayland)
+  git add screenshots && git commit -m "progress $ts" && git push
+  sleep 1800                            # 30 minutes
+done
+```
+
+**Private repos stay private.** The browser never sees your GitHub token. The
+server fetches each image with the token and streams it to the page through
+`/api/shot/...`, and it will only serve filenames that actually exist in a
+team's `screenshots/` folder (so the proxy can't be used to read anything else).
+Images are cached, so opening a history doesn't re-hit GitHub each time.
+
+The folder name defaults to `screenshots` and can be changed via
+`screenshotsFolder` in `config.json` (or `SCREENSHOTS_DIR` in `.env`).
+
+---
+
 ## Project layout
 
 ```
@@ -136,7 +182,7 @@ config.json        Teams, repos, colors, event details
 public/
   index.html       Page structure
   styles.css       The whole visual system (space + mission-control theme)
-  app.js           Polling, ranking, rockets, count-up readouts, starfield
+  app.js           Polling, ranking, rockets, readouts, starfield, screenshot lightbox
 .env.example       Copy to .env and add your token
 ```
 

@@ -52,6 +52,30 @@
     <div class="offline-banner" id="offline" hidden>Telemetry offline — retrying…</div>
   </div>
 
+  <!-- screenshot history lightbox -->
+  <div class="shot-modal" id="shot-modal" hidden>
+    <div class="shot-modal-backdrop" data-close="1"></div>
+    <div class="shot-modal-panel" role="dialog" aria-modal="true" aria-label="Team progress screenshots">
+      <header class="shot-modal-head">
+        <div class="shot-modal-id">
+          <span class="shot-dot" id="shot-modal-dot"></span>
+          <span class="shot-modal-team" id="shot-modal-team">Team</span>
+        </div>
+        <div class="shot-modal-sub" id="shot-modal-sub">Progress timeline</div>
+        <button class="shot-close" id="shot-close" type="button" aria-label="Close">×</button>
+      </header>
+      <div class="shot-stage">
+        <button class="shot-nav prev" id="shot-prev" type="button" aria-label="Newer snapshot">‹</button>
+        <div class="shot-stage-frame">
+          <img class="shot-stage-img" id="shot-stage-img" alt="Team progress screenshot" />
+          <div class="shot-stage-cap" id="shot-stage-cap"></div>
+        </div>
+        <button class="shot-nav next" id="shot-next" type="button" aria-label="Older snapshot">›</button>
+      </div>
+      <div class="shot-strip" id="shot-strip"></div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
