@@ -29,6 +29,7 @@ const lastShots = new Map();  // teamId -> last successful screenshot list
 const shotCache = new Map();  // "teamId/name" -> { buffer, contentType } (images are immutable per name)
 const SHOT_CACHE_MAX = 80;
 const commitStatsCache = new Map(); // teamId -> Map(sha -> { a, d }) — per-commit line counts
+const shotDateCache = new Map();    // screenshot sha -> committed ISO date (immutable per file)
 
 // --- GitHub plumbing --------------------------------------------------------
 async function ghFetch(url, { timeout = 12000 } = {}) {
@@ -107,19 +108,43 @@ function parseShotTime(name) {
   return Number.isNaN(new Date(iso).getTime()) ? null : iso;
 }
 
-// List the screenshots/ folder for a team (newest first).
+// List the screenshots/ folder for a team, sorted newest-first by the date the
+// file was committed (its real upload time) — not by filename.
 async function fetchScreenshots(team) {
   const owner = team.owner || config.owner;
-  const url = `https://api.github.com/repos/${owner}/${team.repo}/contents/${SCREENSHOTS_DIR}`;
-  const r = await ghFetch(url);
+  const repoBase = `https://api.github.com/repos/${owner}/${team.repo}`;
+  const r = await ghFetch(`${repoBase}/contents/${SCREENSHOTS_DIR}`);
   if (r.status === 404) return { ok: true, shots: [] };      // folder not created yet
   if (r.status !== 200 || !Array.isArray(r.json)) return { ok: false, shots: [] };
-  const shots = r.json
-    .filter((f) => f.type === 'file' && IMG_RE.test(f.name))
-    .map((f) => ({ name: f.name, sha: f.sha, size: f.size, time: parseShotTime(f.name) }));
-  shots.sort((a, b) =>
-    a.time && b.time ? b.time.localeCompare(a.time) : b.name.localeCompare(a.name, undefined, { numeric: true })
-  );
+
+  const files = r.json.filter((f) => f.type === 'file' && IMG_RE.test(f.name));
+
+  // The Contents API has no per-file dates, so look up each file's commit date.
+  // Cached by the file's immutable SHA, so it's fetched at most once per image.
+  const unknown = files.filter((f) => !shotDateCache.has(f.sha));
+  await mapLimit(unknown, STATS_CONCURRENCY, async (f) => {
+    const path = `${SCREENSHOTS_DIR}/${f.name}`;
+    const c = await ghFetch(`${repoBase}/commits?path=${encodeURIComponent(path)}&per_page=1`);
+    if (c.status === 200 && Array.isArray(c.json) && c.json[0]) {
+      const d = c.json[0].commit?.committer?.date || c.json[0].commit?.author?.date;
+      if (d) shotDateCache.set(f.sha, d);
+    }
+  });
+
+  const shots = files.map((f) => ({
+    name: f.name,
+    sha: f.sha,
+    size: f.size,
+    time: shotDateCache.get(f.sha) || parseShotTime(f.name),  // commit date; filename as fallback
+  }));
+  shots.sort((a, b) => {
+    const ta = a.time ? Date.parse(a.time) : NaN;
+    const tb = b.time ? Date.parse(b.time) : NaN;
+    if (!Number.isNaN(ta) && !Number.isNaN(tb)) return tb - ta;      // newest commit first
+    if (!Number.isNaN(ta)) return -1;
+    if (!Number.isNaN(tb)) return 1;
+    return b.name.localeCompare(a.name, undefined, { numeric: true });
+  });
   return { ok: true, shots };
 }
 
